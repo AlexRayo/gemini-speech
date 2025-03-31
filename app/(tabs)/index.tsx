@@ -1,74 +1,88 @@
-import { Image, StyleSheet, Platform } from 'react-native';
+// App.tsx
+import React, { useState } from 'react';
+import { Button, View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { Audio } from 'expo-av';
+import { processAudioWithGemini } from '@/services/GeminiService';
+import AudioButton from '@/components/AudioButton';
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+export default function App() {
+  const [result, setResult] = useState<string>('');
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [loading, setLoading] = useState(false);
 
-export default function HomeScreen() {
+  const startRecording = async () => {
+    try {
+      await Audio.requestPermissionsAsync();
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+
+      setRecording(recording);
+
+    } catch (error) {
+      console.error('Error al iniciar grabación:', error);
+    }
+  };
+
+  const stopRecording = async () => {
+    if (!recording) return;
+
+    setLoading(true);
+    try {
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+
+      if (!uri) throw new Error('No se pudo obtener el audio');
+
+      // Procesar directamente con Gemini
+      const response = await processAudioWithGemini(uri);
+      setResult(response);
+
+      console.log("Audio procesado:", uri); // <-- Aquí ves el archivo procesado
+
+    } catch (error) {
+      console.error('Error completo:', error);
+      setResult('Error: Formato de audio no soportado o API Key inválida');
+    } finally {
+      setRecording(null);
+      setLoading(false);
+    }
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12'
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          Tap the Explore tab to learn more about what's included in this starter app.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          When you're ready, run{' '}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    <View style={styles.container}>
+      <Button
+        title={recording ? 'Detener grabación' : 'Iniciar grabación'}
+        onPress={recording ? stopRecording : startRecording}
+      />
+
+      {loading && <ActivityIndicator size="large" style={styles.loader} />}
+
+      <Text style={styles.resultText}>
+        {result || 'Presiona el botón para grabar y procesar'}
+      </Text>
+      {result && <AudioButton textToRead={result} />}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  resultText: {
+    marginTop: 20,
+    fontSize: 16,
+    color: '#333'
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
+  loader: {
+    marginVertical: 20
+  }
 });
