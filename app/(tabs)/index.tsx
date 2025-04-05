@@ -1,10 +1,13 @@
 // App.tsx
 import React, { useEffect, useState } from 'react';
-import { Button, Pressable, View, Text, StyleSheet, ActivityIndicator, FlatList } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, FlatList } from 'react-native';
+import { Button, Text } from 'react-native-paper';
+
 import { Audio } from 'expo-av';
 import { processAudioWithGemini } from '@/services/GeminiService';
 import AudioButton from '@/components/AudioButton';
 import { saveAudio, getStoredAudios, deleteAudio } from '@/services/AudioStorageService';
+import { Link } from 'expo-router';
 
 export default function App() {
   const [result, setResult] = useState<string>('');
@@ -106,31 +109,34 @@ export default function App() {
         data={audios}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View style={styles.audioItem}>
-            <Text>Audio grabado el: {new Date(item.date).toLocaleString()}</Text>
-            <Button title="Reproducir" onPress={() => playAudio(item.uri)} />
-            <Button
-              title="Eliminar"
-              onPress={async () => {
-                await deleteAudio(item.id);
-                // Luego de eliminar, actualiza la lista de audios
-                const storedAudios = await getStoredAudios();
-                setAudios(storedAudios);
-              }}
-            />
-          </View>
+          <Link href={`/${item.id}`} asChild>
+            <View style={styles.audioItem}>
+              <Text variant='bodyLarge'>Audio grabado el: {new Date(item.date).toLocaleString()}</Text>
+              <Button onPress={() => playAudio(item.uri)}>Reproducir</Button>
+              <Button
+                onPress={async () => {
+                  await deleteAudio(item.id);
+                  // Luego de eliminar, actualiza la lista de audios
+                  const storedAudios = await getStoredAudios();
+                  setAudios(storedAudios);
+                }}
+              >Eliminar</Button>
+            </View>
+          </Link>
         )}
       />
-      <Pressable
-        style={({ pressed }) => [
-          styles.recordButton,
-          { backgroundColor: pressed ? '#f44336' : '#e91e63' }
-        ]}
+      <Button
+        mode="contained"
+        compact={true}
+        textColor='white'
+        icon="microphone"
+        accessibilityLabel="Botón para grabar el audio"
+        accessibilityHint="Presiona para grabar el audio"
         onPressIn={startRecording}
         onPressOut={stopRecording}
-      >
-        <Text style={styles.recordButtonText}>Mantén presionado para grabar</Text>
-      </Pressable>
+      // Puedes utilizar el prop `color` o la configuración de tema para cambiar colores si lo requieres
+      >GRABAR
+      </Button>
     </View>
   );
 }
