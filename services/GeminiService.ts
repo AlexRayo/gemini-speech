@@ -17,7 +17,7 @@ export const processAudioWithGemini = async (audioUri: string): Promise<string> 
         contents: [{
           parts: [
             {
-              text: "Transcribe este audio, analiza su contenido y responde como si estuvieses conversando:"
+              text: "Transcribe este audio, analiza su contenido y responde en formato JSON; es para enviar a una base de datos de una ONG. Es importante que trates de determinar un título del audio(sobre lo que trate), clasifica los puntos importantes:"
             },
             {
               inlineData: {

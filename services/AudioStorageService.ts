@@ -1,10 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
+import { AudioType } from '@/types/global';
 
 const AUDIO_STORAGE_KEY = 'AUDIO_FILES';
 
 // Guarda la metadata del audio y mueve el archivo a una ubicación persistente
-export const saveAudio = async (originalUri: string, reportId: string) => {
+export const saveAudio = async (audio: AudioType) => {
   try {
     // Define una carpeta en el FileSystem de la app
     //* Por q crear un nuevo directorio:
@@ -12,38 +13,40 @@ export const saveAudio = async (originalUri: string, reportId: string) => {
     //** Acceso y Clasificación: Tener una ruta fija facilita acceder a estos archivos, listarlos o clasificarlos (por ejemplo, por reporte o fecha) sin depender de rutas temporales que puedan cambiar.
     //** Manejo de Almacenamiento: Al utilizar un directorio propio, puedes gestionar mejor el almacenamiento, como limpiar archivos antiguos o verificar el estado de los audios sin interferir con otros recursos del sistema.*/
 
-    const audioDir = `${FileSystem.documentDirectory}audios/`;
-    const fileName = originalUri.split('/').pop();
-    const newUri = `${audioDir}${fileName}`;
+    if (!audio.processed) { // o según tu lógica, si no está procesado, se asume nuevo
+      const audioDir = `${FileSystem.documentDirectory}audios/`;
+      const fileName = audio.uri.split('/').pop();
+      const newUri = `${audioDir}${fileName}`;
 
-    // Asegúrate de que la carpeta exista
-    const dirInfo = await FileSystem.getInfoAsync(audioDir);
-    if (!dirInfo.exists) {
-      await FileSystem.makeDirectoryAsync(audioDir, { intermediates: true });
+      const dirInfo = await FileSystem.getInfoAsync(audioDir);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(audioDir, { intermediates: true });
+      }
+      await FileSystem.moveAsync({
+        from: audio.uri,
+        to: newUri,
+      });
+
+      // Actualiza la URI en el objeto
+      audio.uri = newUri;
     }
 
-    // Copia el archivo a la carpeta persistente
-    await FileSystem.moveAsync({
-      from: originalUri,
-      to: newUri,
-    });
-
-    // Crea un objeto con la metadata del audio
-    const audioEntry = {
-      id: Date.now().toString(), // identificador único, podrías usar UUIDs
-      uri: newUri,
-      reportId, // permite clasificar por reporte
-      date: new Date().toISOString(),
-      processed: false, // marca para saber si ya se procesó o no
-    };
-
-    // Guarda la metadata en AsyncStorage
+    // Obtiene la lista de audios
     const storedAudios = await AsyncStorage.getItem(AUDIO_STORAGE_KEY);
-    const audios = storedAudios ? JSON.parse(storedAudios) : [];
-    audios.push(audioEntry);
-    await AsyncStorage.setItem(AUDIO_STORAGE_KEY, JSON.stringify(audios));
+    let audios: AudioType[] = storedAudios ? JSON.parse(storedAudios) : [];
 
-    return audioEntry;
+    // Busca si ya existe un audio con el mismo id
+    const existingIndex = audios.findIndex((a) => a.id === audio.id);
+    if (existingIndex > -1) {
+      // Actualiza el registro existente
+      audios[existingIndex] = audio;
+    } else {
+      // Si es nuevo, lo agrega
+      audios.push(audio);
+    }
+
+    await AsyncStorage.setItem(AUDIO_STORAGE_KEY, JSON.stringify(audios));
+    return audio;
   } catch (error) {
     console.error('Error al guardar el audio:', error);
     throw error;
@@ -86,4 +89,9 @@ export const deleteAudio = async (audioId: string) => {
     console.error('Error eliminando el audio:', error);
     throw error;
   }
+};
+
+export const deleteAll = async () => {
+  await AsyncStorage.clear();
+
 };
