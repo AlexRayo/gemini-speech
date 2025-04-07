@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, ActivityIndicator, FlatList, Pressable } from 'react-native';
-import { Button, Text } from 'react-native-paper';
+import { View, StyleSheet, ActivityIndicator, FlatList, Pressable, Dimensions } from 'react-native';
+import { Button, IconButton, Text, Portal, Dialog } from 'react-native-paper';
 import { Audio } from 'expo-av';
 import { processAudioWithGemini } from '@/services/GeminiService';
 import AudioButton from '@/components/AudioButton';
@@ -8,12 +8,34 @@ import { saveAudio, getStoredAudios, deleteAudio, deleteAll } from '@/services/A
 import { AudioType } from '@/types/global';
 
 export default function App() {
-  const [result, setResult] = useState<string>('');
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [loading, setLoading] = useState(false);
   const [audios, setAudios] = useState<AudioType[]>([]);
   const [isPressed, setIsPressed] = useState(false);
   const recordingTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  const [visibleDialog, setVisibleDialog] = useState(false);
+  const [audioToDelete, setAudioToDelete] = useState<AudioType | null>(null);
+
+  // Funciones para manejar el diálogo
+  const showDialog = (audio: AudioType) => {
+    setAudioToDelete(audio);
+    setVisibleDialog(true);
+  };
+
+  const hideDialog = () => {
+    setVisibleDialog(false);
+    setAudioToDelete(null);
+  };
+
+  const confirmDelete = async () => {
+    if (audioToDelete) {
+      await deleteAudio(audioToDelete.id);
+      const storedAudios = await getStoredAudios();
+      setAudios(storedAudios);
+    }
+    hideDialog();
+  };
 
   // Función para reproducir el sonido de aviso
   const playCueSound = async () => {
@@ -63,18 +85,6 @@ export default function App() {
     }, 500);
   };
 
-  const handlePressOut = async () => {
-    setIsPressed(false);
-    if (recordingTimeout.current) {
-      clearTimeout(recordingTimeout.current);
-      recordingTimeout.current = null;
-    }
-    // Si ya inició la grabación, detenla
-    if (recording) {
-      await stopRecording();
-    }
-  };
-
   const stopRecording = async () => {
     if (!recording) return;
     setLoading(true);
@@ -90,7 +100,7 @@ export default function App() {
       const entry: AudioType = {
         id: Date.now().toString(), // identificador único
         uri,
-        data: "",
+        data: { titulo: "" },
         date: new Date().toISOString(),
         processed: false,
         sent: false,
@@ -102,7 +112,6 @@ export default function App() {
       setAudios(storedAudios);
     } catch (error) {
       console.error('Error completo:', error);
-      setResult('Error: Formato de audio no soportado o API Key inválida');
     } finally {
       setRecording(null);
       setLoading(false);
@@ -129,9 +138,15 @@ export default function App() {
     }
   };
 
-  const enviarAudios = () => {
+  const enviarAudios = async () => {
     console.log("PROCESSING AUDIOS...");
-    audios.forEach(async (audio: AudioType) => {
+    // Recorremos de forma secuencial para asegurar la actualización adecuada
+    for (const audio of audios) {
+      // Si ya fue procesado, lo saltamos
+      if (audio.processed) {
+        console.log(`Audio ${audio.id} ya fue procesado, saltando.`);
+        continue;
+      }
       const response = await processAudioWithGemini(audio.uri);
       let dataParsed;
       try {
@@ -148,10 +163,13 @@ export default function App() {
       };
       const updateEntry: AudioType = { ...audio, ...updateProperties };
       await saveAudio(updateEntry);
-      setResult(typeof updateEntry.data === 'object' ? JSON.stringify(updateEntry.data) : updateEntry.data);
       console.log("Audio procesado:", response);
-    });
+    }
+    // Una vez terminado el procesamiento, refrescamos la lista de audios
+    const storedAudios = await getStoredAudios();
+    setAudios(storedAudios);
   };
+
 
   useEffect(() => {
     loadAudios();
@@ -160,32 +178,43 @@ export default function App() {
   return (
     <View style={styles.container}>
       {loading && <ActivityIndicator size="large" style={styles.loader} />}
-      <Text style={styles.resultText}>
-        {result || 'Presiona y mantén el botón para grabar y procesar'}
+      <Text variant='titleLarge' style={styles.h1}>
+        {audios.length === 0 ? 'No hay audios' : 'Audios'}
       </Text>
-      {result && <AudioButton textToRead={result} />}
-      <Text>Audios</Text>
+
       <FlatList
         data={audios}
         keyExtractor={(item: AudioType) => item.id}
         renderItem={({ item }) => (
-          <View style={styles.audioItem}>
-            <Text variant="bodyLarge">
-              Audio grabado el: {new Date(item.date).toLocaleString()}
-            </Text>
-            <Button onPress={() => playAudio(item.uri)}>Reproducir</Button>
-            <Button
-              onPress={async () => {
-                await deleteAll();
-                const storedAudios = await getStoredAudios();
-                setAudios(storedAudios);
-              }}
-            >
-              Eliminar
-            </Button>
+          <View style={[styles.audioItem, item.processed ? { backgroundColor: '#dcfce7' } : { backgroundColor: '#f1f1f1' }]}>
+            <IconButton
+              icon="delete"
+              iconColor='tomato'
+              onPress={() => showDialog(item)}
+            />
+            <View>
+              <Text variant="bodyLarge" style={[{ fontWeight: 'bold', width: (Dimensions.get('window').width - 180) }]}>
+                {item.processed ? item.data.titulo : 'Audio'}
+              </Text>
+              <Text variant="bodyLarge">
+                {new Date(item.date).toLocaleString()}
+              </Text>
+            </View>
+
+
+            <IconButton mode='outlined' icon="play" onPress={() => playAudio(item.uri)} />
           </View>
         )}
       />
+      <Button
+        icon="delete"
+        mode='outlined'
+        onPress={async () => {
+          await deleteAll();
+          const storedAudios = await getStoredAudios();
+          setAudios(storedAudios);
+        }}
+      >Eliminar todos</Button>
       <View style={styles.buttonRow}>
         <Button icon="send" compact={true} onPress={enviarAudios}>
           ENVIAR
@@ -203,15 +232,52 @@ export default function App() {
           GRABAR
         </Button>
       </View>
+
+      {/* Diálogo de confirmación para eliminar un audio */}
+      <Portal>
+        <Dialog visible={visibleDialog} onDismiss={hideDialog}>
+          <Dialog.Title>Confirmar eliminación</Dialog.Title>
+          <Dialog.Content>
+            <Text>¿Estás seguro que deseas eliminar este audio?</Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={hideDialog}>Cancelar</Button>
+            <Button onPress={confirmDelete}>Eliminar</Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    backgroundColor: '#fff',
     flex: 1,
     justifyContent: 'center',
-    padding: 20
+    padding: 20,
+  },
+  h1: {
+    marginTop: 20,
+    marginBottom: 10,
+    textAlign: 'center',
+    borderBottomColor: '#ccc',
+    borderBottomWidth: 1,
+    paddingBottom: 10,
+  },
+  audioItem: {
+    borderRadius: 10,
+    padding: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 20
   },
   recordButton: {
     padding: 20,
@@ -231,16 +297,4 @@ const styles = StyleSheet.create({
   loader: {
     marginVertical: 20
   },
-  audioItem: {
-    marginBottom: 10,
-    padding: 10,
-    backgroundColor: '#f2f2f2',
-    borderRadius: 5
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 20
-  }
 });
