@@ -13,7 +13,11 @@ const RECORDING_DELAY = 500;
 export default function App() {
   const recordingRef = useRef<Audio.Recording | null>(null);
   const maxRecordingTimeout = useRef<NodeJS.Timeout | null>(null);
+  // Agrega una referencia para el sonido actualmente reproducido
+  const currentSoundRef = useRef<Audio.Sound | null>(null);
   const [audios, setAudios] = useState<AudioType[]>([]);
+  const [audioUri, setAudioUri] = useState<string | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [visibleDialog, setVisibleDialog] = useState(false);
@@ -126,18 +130,49 @@ export default function App() {
   };
 
   const playAudio = async (uri: string) => {
+    setAudioUri(uri);
     try {
+      // Si hay un sonido reproduciéndose, detenerlo y liberarlo
+      if (currentSoundRef.current) {
+        await currentSoundRef.current.stopAsync();
+        await currentSoundRef.current.unloadAsync();
+        currentSoundRef.current = null;
+      }
+
+      // Crear el nuevo sonido y guardarlo en la referencia global
       const { sound } = await Audio.Sound.createAsync({ uri });
+      currentSoundRef.current = sound;
+
       await sound.playAsync();
       sound.setOnPlaybackStatusUpdate((status) => {
+        // Al terminar de reproducir, liberar el recurso y limpiar la referencia
         if ('didJustFinish' in status && status.didJustFinish) {
           sound.unloadAsync();
+          currentSoundRef.current = null;
+          setAudioUri(null);
+          setIsPaused(false);
         }
       });
     } catch (error) {
       console.error('Error reproduciendo el audio:', error);
     }
   };
+
+  const toggleAudio = async () => {
+    try {
+      if (currentSoundRef.current) {
+        if (isPaused) {
+          await currentSoundRef.current.playAsync();
+        } else {
+          await currentSoundRef.current.pauseAsync();
+        }
+        setIsPaused(!isPaused);
+      }
+    } catch (error) {
+      console.error("Error alternando el audio:", error);
+    }
+  };
+
 
   const enviarAudios = async () => {
     console.log("PROCESSING AUDIOS...");
@@ -211,7 +246,10 @@ export default function App() {
             </View>
 
 
-            <IconButton mode='outlined' icon="play" onPress={() => playAudio(item.uri)} />
+            <IconButton
+              mode='outlined'
+              icon={!isPaused && audioUri === item.uri ? "pause" : "play"}
+              onPress={() => !isPaused && audioUri !== item.uri ? playAudio(item.uri) : toggleAudio()} />
           </View>
         )}
       />
