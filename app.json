@@ -15,7 +15,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.alexrayo.myapp"
     },
     "web": {
       "bundler": "metro",
@@ -32,10 +33,24 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      ["expo-build-properties",
+      {
+        "android": {
+          "enableJetifier": false
+        }
+      }]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "dc1236ae-eb56-4abd-9dfe-a685134d14c3"
+      }
     }
   }
 }
